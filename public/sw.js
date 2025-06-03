@@ -9,13 +9,14 @@ self.addEventListener("activate", function (event) {
 });
 
 self.addEventListener("notificationclick", function (event) {
+  console.log("Notification clicked:", event.notification);
   event.notification.close();
 
   event.waitUntil(
     clients.matchAll({ type: "window" }).then(function (clientList) {
       // If a window is already open, focus it
       for (let client of clientList) {
-        if (client.url === "/" && "focus" in client) {
+        if (client.url.includes(location.origin) && "focus" in client) {
           return client.focus();
         }
       }
@@ -28,17 +29,44 @@ self.addEventListener("notificationclick", function (event) {
 });
 
 self.addEventListener("push", function (event) {
-  if (event.data) {
-    const data = event.data.json();
+  console.log("Push event received:", event);
 
-    event.waitUntil(
-      self.registration.showNotification(data.title, {
-        body: data.body,
-        icon: "/icon-192x192.png",
-        badge: "/icon-192x192.png",
-        tag: "daily-verse",
-        requireInteraction: false,
-      })
-    );
+  if (event.data) {
+    try {
+      const data = event.data.json();
+
+      event.waitUntil(
+        self.registration.showNotification(data.title || "قرآن ریڈر", {
+          body: data.body || "آج کی نئی آیت پڑھنے کے لیے کلک کریں",
+          icon: data.icon || "/icon-192x192.png",
+          badge: "/icon-192x192.png",
+          tag: "quran-daily-verse",
+          requireInteraction: false,
+          vibrate: [200, 100, 200],
+          actions: [
+            {
+              action: "read",
+              title: "آیت پڑھیں",
+            },
+            {
+              action: "close",
+              title: "بند کریں",
+            },
+          ],
+        })
+      );
+    } catch (error) {
+      console.error("Error processing push event:", error);
+    }
+  }
+});
+
+self.addEventListener("notificationclick", function (event) {
+  console.log("Notification action clicked:", event.action);
+
+  event.notification.close();
+
+  if (event.action === "read" || !event.action) {
+    event.waitUntil(clients.openWindow("/"));
   }
 });

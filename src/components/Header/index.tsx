@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { QuranSurah } from "@/utils/types/quran";
+import NotificationButton from "../NotificationButton";
 
 interface HeaderProps {
   currentView: "home" | "surah" | "daily" | "progress";
@@ -13,14 +14,9 @@ export default function Header({
   setCurrentView,
   selectedSurah,
 }: HeaderProps) {
-  const [notificationsEnabled, setNotificationsEnabled] =
-    useState<boolean>(false);
   const [darkMode, setDarkMode] = useState<boolean>(false);
 
   useEffect(() => {
-    const enabled = localStorage.getItem("notificationsEnabled") === "true";
-    setNotificationsEnabled(enabled);
-
     const isDark =
       localStorage.getItem("darkMode") === "true" ||
       window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -30,34 +26,6 @@ export default function Header({
       document.documentElement.classList.add("dark");
     }
   }, []);
-
-  const handleNotificationToggle = async () => {
-    if (!notificationsEnabled) {
-      if ("Notification" in window) {
-        const permission = await Notification.requestPermission();
-        if (permission === "granted") {
-          setNotificationsEnabled(true);
-          localStorage.setItem("notificationsEnabled", "true");
-
-          if ("serviceWorker" in navigator) {
-            try {
-              await navigator.serviceWorker.register("/sw.js");
-            } catch (error) {
-              console.error("Service Worker registration failed:", error);
-            }
-          }
-
-          new Notification("قرآن ریڈر", {
-            body: "روزانہ آیات کی اطلاع فعال ہو گئی!",
-            icon: "/icon-192x192.png",
-          });
-        }
-      }
-    } else {
-      setNotificationsEnabled(false);
-      localStorage.setItem("notificationsEnabled", "false");
-    }
-  };
 
   const toggleDarkMode = () => {
     const newDarkMode = !darkMode;
@@ -107,16 +75,8 @@ export default function Header({
               📊 پیش قدمی
             </button>
 
-            <button
-              onClick={handleNotificationToggle}
-              className={`px-4 py-2 rounded-lg transition-colors text-sm ${
-                notificationsEnabled
-                  ? "bg-red-500 text-white hover:bg-red-600"
-                  : "bg-blue-500 text-white hover:bg-blue-600"
-              }`}
-            >
-              {notificationsEnabled ? "🔕" : "🔔"}
-            </button>
+            {/* Use the new NotificationButton component */}
+            <NotificationButton />
 
             <button
               onClick={toggleDarkMode}
@@ -126,6 +86,15 @@ export default function Header({
             </button>
           </div>
         </div>
+
+        {/* Mobile view for surah name */}
+        {currentView === "surah" && selectedSurah && (
+          <div className="md:hidden mt-3">
+            <span className="text-sm text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-lg">
+              {selectedSurah.transliteration} - {selectedSurah.name}
+            </span>
+          </div>
+        )}
       </div>
     </header>
   );
