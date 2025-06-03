@@ -1,24 +1,34 @@
 "use client";
 import { useState, useEffect } from "react";
-
 import { quranService } from "@/utils/quranService";
-import { DailyVerseData } from "@/utils/types/quran";
+import { lazyTranslationService } from "@/utils/lazyTranslationService";
 
 interface DailyVerseProps {
   expanded?: boolean;
 }
 
 export default function DailyVerse({ expanded = false }: DailyVerseProps) {
-  const [dailyVerse, setDailyVerse] = useState<DailyVerseData | null>(null);
+  const [verseData, setVerseData] = useState<{
+    arabic: string;
+    surahNumber: number;
+    verseNumber: number;
+    surahName: string;
+    surahNameArabic: string;
+    verseIndex: number;
+  } | null>(null);
+  const [translationState, setTranslationState] = useState({
+    loading: false,
+    loaded: false,
+    error: null as string | null,
+    text: "",
+  });
   const [verseNumber, setVerseNumber] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const initializeDailyVerse = async () => {
       try {
         setLoading(true);
-        setError(null);
 
         const today = new Date();
         const storedVerseNumber = parseInt(
@@ -44,15 +54,39 @@ export default function DailyVerse({ expanded = false }: DailyVerseProps) {
 
         setVerseNumber(currentVerseNumber);
 
-        // Get the verse with Urdu translation
+        // Get verse data (fast - from quran-json)
         const verse = await quranService.getVerseBySequentialNumber(
           currentVerseNumber
         );
-        setDailyVerse(verse);
+        if (verse) {
+          setVerseData({
+            arabic: verse.arabic,
+            surahNumber: verse.surahNumber,
+            verseNumber: verse.verseIndex,
+            surahName: verse.surahName,
+            surahNameArabic: verse.surahNameArabic,
+            verseIndex: verse.verseIndex,
+          });
+
+          // Subscribe to translation state changes
+          const unsubscribe = lazyTranslationService.subscribe(
+            verse.surahNumber,
+            verse.verseIndex,
+            setTranslationState
+          );
+
+          // Start loading translation
+          lazyTranslationService.loadTranslation(
+            verse.surahNumber,
+            verse.verseIndex
+          );
+
+          setLoading(false);
+
+          return unsubscribe;
+        }
       } catch (err) {
         console.error("Error loading daily verse:", err);
-        setError("آیت لوڈ کرنے میں خرابی");
-      } finally {
         setLoading(false);
       }
     };
@@ -79,10 +113,10 @@ export default function DailyVerse({ expanded = false }: DailyVerseProps) {
     );
   }
 
-  if (error || !dailyVerse) {
+  if (!verseData) {
     return (
       <div className="bg-gradient-to-r from-red-500 to-orange-500 text-white rounded-lg p-6 text-center">
-        <div className="mb-2">⚠️ {error || "آیت لوڈ کرنے میں خرابی"}</div>
+        <div className="mb-2">⚠️ آیت لوڈ کرنے میں خرابی</div>
         <button
           onClick={() => window.location.reload()}
           className="text-sm bg-white/20 px-4 py-2 rounded-lg hover:bg-white/30 transition-colors"
@@ -101,11 +135,11 @@ export default function DailyVerse({ expanded = false }: DailyVerseProps) {
     >
       <div className="text-center mb-4">
         <h3 className="text-xl font-bold mb-2 flex items-center justify-center gap-2">
-          🌟 آج کی آیت - {dailyVerse.surahName}
+          🌟 آج کی آیت - {verseData.surahName}
         </h3>
         <p className="text-sm opacity-90 bg-white/20 rounded-full px-4 py-1 inline-block">
-          آیت نمبر {verseNumber} - {dailyVerse.surahNameArabic} (
-          {dailyVerse.verseIndex})
+          آیت نمبر {verseNumber} - {verseData.surahNameArabic} (
+          {verseData.verseIndex})
         </p>
       </div>
 
@@ -118,18 +152,54 @@ export default function DailyVerse({ expanded = false }: DailyVerseProps) {
             textAlign: "right",
           }}
         >
-          {dailyVerse.arabic}
+          {verseData.arabic}
         </div>
 
         <div
-          className="text-lg text-center leading-relaxed bg-white/10 p-4 rounded-lg border-r-4 border-green-300"
+          className={`text-lg text-center leading-relaxed p-4 rounded-lg border-r-4 transition-all duration-300 ${
+            translationState.loading
+              ? "bg-white/5 border-gray-300 animate-pulse"
+              : "bg-white/10 border-green-300"
+          }`}
           style={{
             direction: "rtl",
             textAlign: "right",
             fontFamily: "Noto Nastaliq Urdu, Arial, sans-serif",
           }}
         >
-          {dailyVerse.urdu}
+          {translationState.loading ? (
+            <div className="flex items-center justify-center gap-2">
+              <span>اردو ترجمہ لوڈ ہو رہا ہے</span>
+              <div className="flex gap-1">
+                <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce"></div>
+                <div
+                  className="w-2 h-2 bg-white/60 rounded-full animate-bounce"
+                  style={{ animationDelay: "0.1s" }}
+                ></div>
+                <div
+                  className="w-2 h-2 bg-white/60 rounded-full animate-bounce"
+                  style={{ animationDelay: "0.2s" }}
+                ></div>
+              </div>
+            </div>
+          ) : translationState.error ? (
+            <div className="text-center">
+              <p className="text-red-200 mb-2">ترجمہ لوڈ کرنے میں خرابی</p>
+              <button
+                onClick={() =>
+                  lazyTranslationService.loadTranslation(
+                    verseData.surahNumber,
+                    verseData.verseNumber
+                  )
+                }
+                className="text-sm bg-white/20 px-3 py-1 rounded-lg hover:bg-white/30 transition-colors"
+              >
+                دوبارہ کوشش کریں
+              </button>
+            </div>
+          ) : (
+            translationState.text
+          )}
         </div>
       </div>
 

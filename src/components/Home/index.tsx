@@ -2,8 +2,9 @@
 import { useState } from "react";
 import Header from "../Header";
 import SurahList from "../SurahList";
-import VerseReader from "../VerseReader";
+import VerseReader from "../VerseReader"; // or VirtualizedVerseReader for large surahs
 import DailyVerse from "../DailyVerse";
+import CacheManager from "../CacheManager";
 import { QuranSurah } from "@/utils/types/quran";
 
 export default function Home() {
@@ -62,6 +63,9 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      {/* Cache Manager - Only show in development or for admin users */}
+      {process.env.NODE_ENV === "development" && <CacheManager />}
     </div>
   );
 }
