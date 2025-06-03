@@ -58,6 +58,7 @@ export default function DailyVerse({ expanded = false }: DailyVerseProps) {
         const verse = await quranService.getVerseBySequentialNumber(
           currentVerseNumber
         );
+
         if (verse) {
           setVerseData({
             arabic: verse.arabic,
@@ -68,22 +69,22 @@ export default function DailyVerse({ expanded = false }: DailyVerseProps) {
             verseIndex: verse.verseIndex,
           });
 
-          // Subscribe to translation state changes
-          const unsubscribe = lazyTranslationService.subscribe(
-            verse.surahNumber,
-            verse.verseIndex,
-            setTranslationState
-          );
-
-          // Start loading translation
-          lazyTranslationService.loadTranslation(
+          // Get current translation state first
+          const currentState = lazyTranslationService.getTranslationState(
             verse.surahNumber,
             verse.verseIndex
           );
+          setTranslationState(currentState);
+
+          // If not loaded, start loading translation
+          if (!currentState.loaded && !currentState.loading) {
+            lazyTranslationService.loadTranslation(
+              verse.surahNumber,
+              verse.verseIndex
+            );
+          }
 
           setLoading(false);
-
-          return unsubscribe;
         }
       } catch (err) {
         console.error("Error loading daily verse:", err);
@@ -93,6 +94,42 @@ export default function DailyVerse({ expanded = false }: DailyVerseProps) {
 
     initializeDailyVerse();
   }, []);
+
+  // Separate useEffect for subscribing to translation state changes
+  useEffect(() => {
+    if (!verseData) return;
+
+    const unsubscribe = lazyTranslationService.subscribe(
+      verseData.surahNumber,
+      verseData.verseIndex,
+      (newState) => {
+        console.log("Translation state updated:", newState); // Debug log
+        setTranslationState(newState);
+      }
+    );
+
+    return unsubscribe;
+  }, [verseData]);
+
+  // Manual retry function
+  const handleRetryTranslation = async () => {
+    if (!verseData) return;
+
+    console.log(
+      "Retrying translation for:",
+      verseData.surahNumber,
+      verseData.verseIndex
+    ); // Debug log
+
+    try {
+      await lazyTranslationService.loadTranslation(
+        verseData.surahNumber,
+        verseData.verseIndex
+      );
+    } catch (error) {
+      console.error("Error retrying translation:", error);
+    }
+  };
 
   if (loading) {
     return (
@@ -159,6 +196,8 @@ export default function DailyVerse({ expanded = false }: DailyVerseProps) {
           className={`text-lg text-center leading-relaxed p-4 rounded-lg border-r-4 transition-all duration-300 ${
             translationState.loading
               ? "bg-white/5 border-gray-300 animate-pulse"
+              : translationState.error
+              ? "bg-red-500/20 border-red-300"
               : "bg-white/10 border-green-300"
           }`}
           style={{
@@ -185,20 +224,28 @@ export default function DailyVerse({ expanded = false }: DailyVerseProps) {
           ) : translationState.error ? (
             <div className="text-center">
               <p className="text-red-200 mb-2">ترجمہ لوڈ کرنے میں خرابی</p>
+              <p className="text-xs text-red-300 mb-2">
+                {translationState.error}
+              </p>
               <button
-                onClick={() =>
-                  lazyTranslationService.loadTranslation(
-                    verseData.surahNumber,
-                    verseData.verseNumber
-                  )
-                }
+                onClick={handleRetryTranslation}
                 className="text-sm bg-white/20 px-3 py-1 rounded-lg hover:bg-white/30 transition-colors"
               >
                 دوبارہ کوشش کریں
               </button>
             </div>
-          ) : (
+          ) : translationState.text ? (
             translationState.text
+          ) : (
+            <div className="text-center">
+              <p className="text-white/80 mb-2">ترجمہ دستیاب نہیں</p>
+              <button
+                onClick={handleRetryTranslation}
+                className="text-sm bg-white/20 px-3 py-1 rounded-lg hover:bg-white/30 transition-colors"
+              >
+                ترجمہ لوڈ کریں
+              </button>
+            </div>
           )}
         </div>
       </div>
