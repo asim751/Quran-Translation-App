@@ -3,8 +3,8 @@ import { useState, useEffect } from "react";
 import { QuranSurah } from "@/utils/types/quran";
 
 interface HeaderProps {
-  currentView: "home" | "surah" | "daily";
-  setCurrentView: (view: "home" | "surah" | "daily") => void;
+  currentView: "home" | "surah" | "daily" | "progress";
+  setCurrentView: (view: "home" | "surah" | "daily" | "progress") => void;
   selectedSurah: QuranSurah | null;
 }
 
@@ -18,11 +18,9 @@ export default function Header({
   const [darkMode, setDarkMode] = useState<boolean>(false);
 
   useEffect(() => {
-    // Check if notifications are already enabled
     const enabled = localStorage.getItem("notificationsEnabled") === "true";
     setNotificationsEnabled(enabled);
 
-    // Check dark mode preference
     const isDark =
       localStorage.getItem("darkMode") === "true" ||
       window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -35,64 +33,30 @@ export default function Header({
 
   const handleNotificationToggle = async () => {
     if (!notificationsEnabled) {
-      // Request permission
       if ("Notification" in window) {
         const permission = await Notification.requestPermission();
         if (permission === "granted") {
           setNotificationsEnabled(true);
           localStorage.setItem("notificationsEnabled", "true");
 
-          // Register service worker for notifications
           if ("serviceWorker" in navigator) {
             try {
               await navigator.serviceWorker.register("/sw.js");
-              scheduleNotification();
             } catch (error) {
               console.error("Service Worker registration failed:", error);
             }
           }
 
-          // Show success message
           new Notification("قرآن ریڈر", {
-            body: "روزانہ آیات کی اطلاع فعال ہو گئی! آپ کو ہر دن 8 بجے صبح نئی آیت کی اطلاع ملے گی۔",
+            body: "روزانہ آیات کی اطلاع فعال ہو گئی!",
             icon: "/icon-192x192.png",
           });
-        } else {
-          alert("اطلاعات کی اجازت درکار ہے");
         }
-      } else {
-        alert("آپ کا برائوزر اطلاعات کو سپورٹ نہیں کرتا");
       }
     } else {
       setNotificationsEnabled(false);
       localStorage.setItem("notificationsEnabled", "false");
-      alert("روزانہ آیات کی اطلاع بند ہو گئی");
     }
-  };
-
-  const scheduleNotification = () => {
-    const now = new Date();
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(8, 0, 0, 0); // 8 AM next day
-
-    const timeUntilNotification = tomorrow.getTime() - now.getTime();
-
-    setTimeout(() => {
-      if (Notification.permission === "granted") {
-        const verseNumber = parseInt(
-          localStorage.getItem("currentVerseNumber") || "1"
-        );
-        new Notification("آج کی آیت - قرآن مجید", {
-          body: `آج کی نئی آیت پڑھنے کے لیے ایپ کھولیں (آیت نمبر ${verseNumber})`,
-          icon: "/icon-192x192.png",
-          badge: "/icon-192x192.png",
-        });
-      }
-
-      // Schedule next notification
-      scheduleNotification();
-    }, timeUntilNotification);
   };
 
   const toggleDarkMode = () => {
@@ -137,6 +101,13 @@ export default function Header({
             </button>
 
             <button
+              onClick={() => setCurrentView("progress")}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
+            >
+              📊 پیش قدمی
+            </button>
+
+            <button
               onClick={handleNotificationToggle}
               className={`px-4 py-2 rounded-lg transition-colors text-sm ${
                 notificationsEnabled
@@ -144,9 +115,7 @@ export default function Header({
                   : "bg-blue-500 text-white hover:bg-blue-600"
               }`}
             >
-              {notificationsEnabled
-                ? "🔕 اطلاع بند کریں"
-                : "🔔 اطلاع فعال کریں"}
+              {notificationsEnabled ? "🔕" : "🔔"}
             </button>
 
             <button
@@ -157,15 +126,6 @@ export default function Header({
             </button>
           </div>
         </div>
-
-        {/* Mobile view for surah name */}
-        {currentView === "surah" && selectedSurah && (
-          <div className="md:hidden mt-3">
-            <span className="text-sm text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-lg">
-              {selectedSurah.transliteration} - {selectedSurah.name}
-            </span>
-          </div>
-        )}
       </div>
     </header>
   );

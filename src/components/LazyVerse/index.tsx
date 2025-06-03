@@ -9,6 +9,7 @@ interface LazyVerseProps {
   verseIndex: number;
   fontSize: number;
   isVisible?: boolean;
+  onBookmark?: () => void;
 }
 
 export default function LazyVerse({
@@ -18,6 +19,7 @@ export default function LazyVerse({
   verseIndex,
   fontSize,
   isVisible = true,
+  onBookmark,
 }: LazyVerseProps) {
   const [translationState, setTranslationState] = useState(() =>
     lazyTranslationService.getTranslationState(surahNumber, verseNumber)
@@ -26,7 +28,6 @@ export default function LazyVerse({
   const elementRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Subscribe to translation state changes
     const unsubscribe = lazyTranslationService.subscribe(
       surahNumber,
       verseNumber,
@@ -37,7 +38,6 @@ export default function LazyVerse({
   }, [surahNumber, verseNumber]);
 
   useEffect(() => {
-    // Start loading when component becomes visible and hasn't started loading yet
     if (isVisible && !hasStartedLoading && !translationState.loaded) {
       setHasStartedLoading(true);
       lazyTranslationService.loadTranslation(surahNumber, verseNumber);
@@ -65,12 +65,24 @@ export default function LazyVerse({
           🔢 آیت {verseIndex}
         </span>
 
-        {translationState.loading && (
-          <div className="flex items-center gap-2 text-blue-500">
-            <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-            <span className="text-xs">لوڈ ہو رہا ہے...</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {translationState.loading && (
+            <div className="flex items-center gap-2 text-blue-500">
+              <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-xs">لوڈ ہو رہا ہے...</span>
+            </div>
+          )}
+
+          {onBookmark && (
+            <button
+              onClick={onBookmark}
+              className="text-gray-500 hover:text-blue-500 transition-colors"
+              title="بک مارک کریں"
+            >
+              📌
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Arabic Text */}

@@ -1,16 +1,22 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { QuranSurah } from "@/utils/types/quran";
 import { quranService } from "@/utils/quranService";
 import LazyVerse from "../LazyVerse";
-import { lazyTranslationService } from "@/utils/lazyTranslationService";
+import { useReadingProgress } from "@/hooks/useReadingProgress";
+import { readingProgressService } from "@/utils/readingProgressService";
 
 interface VerseReaderProps {
   surah: QuranSurah;
   onBack: () => void;
+  startFromVerse?: number;
 }
 
-export default function VerseReader({ surah, onBack }: VerseReaderProps) {
+export default function VerseReader({
+  surah,
+  onBack,
+  startFromVerse = 1,
+}: VerseReaderProps) {
   const [fontSize, setFontSize] = useState<number>(16);
   const [verses, setVerses] = useState<
     Array<{
@@ -19,14 +25,17 @@ export default function VerseReader({ surah, onBack }: VerseReaderProps) {
     }>
   >([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [preloadingProgress, setPreloadingProgress] = useState<number>(0);
+  const [currentVerse, setCurrentVerse] = useState<number>(startFromVerse);
+  const { updatePosition, markSurahComplete } = useReadingProgress();
+
+  const verseRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
   useEffect(() => {
     const loadVerses = async () => {
       try {
         setLoading(true);
 
-        // Get Arabic verses from quran-json (fast)
         const surahData = quranService.getSurahById(surah.id);
         if (surahData && surahData.verses) {
           const verseData = surahData.verses.map((verse, index) => ({
@@ -35,18 +44,10 @@ export default function VerseReader({ surah, onBack }: VerseReaderProps) {
           }));
 
           setVerses(verseData);
-          setLoading(false);
-
-          // Start preloading first few translations in background
-          const firstFewVerses = verseData.slice(0, 5).map((verse) => ({
-            surahNumber: surah.id,
-            verseNumber: verse.verseNumber,
-          }));
-
-          lazyTranslationService.preloadTranslations(firstFewVerses);
         }
       } catch (error) {
         console.error("Error loading verses:", error);
+      } finally {
         setLoading(false);
       }
     };
@@ -54,21 +55,82 @@ export default function VerseReader({ surah, onBack }: VerseReaderProps) {
     loadVerses();
   }, [surah]);
 
-  const handlePreloadAll = async () => {
-    const allVerses = verses.map((verse) => ({
-      surahNumber: surah.id,
-      verseNumber: verse.verseNumber,
-    }));
+  // Set up intersection observer to track reading progress
+  useEffect(() => {
+    if (loading || verses.length === 0) return;
 
-    setPreloadingProgress(0);
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && entry.intersectionRatio > 0.5) {
+            const verseNumber = parseInt(
+              entry.target.getAttribute("data-verse") || "0"
+            );
+            if (verseNumber > 0) {
+              setCurrentVerse(verseNumber);
+              updatePosition(surah.id, verseNumber);
+            }
+          }
+        });
+      },
+      {
+        threshold: 0.5,
+        rootMargin: "-50px 0px -50px 0px",
+      }
+    );
 
-    // Preload with progress tracking
-    for (let i = 0; i < allVerses.length; i++) {
-      await lazyTranslationService.loadTranslation(
-        allVerses[i].surahNumber,
-        allVerses[i].verseNumber
+    // Observe all verse elements
+    Object.values(verseRefs.current).forEach((ref) => {
+      if (ref && observerRef.current) {
+        observerRef.current.observe(ref);
+      }
+    });
+
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, [loading, verses, surah.id, updatePosition]);
+
+  // Scroll to specific verse
+  useEffect(() => {
+    if (!loading && startFromVerse > 1) {
+      const timer = setTimeout(() => {
+        const verseElement = verseRefs.current[startFromVerse];
+        if (verseElement) {
+          verseElement.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [loading, startFromVerse]);
+
+  // Handle surah completion
+  const handleMarkComplete = () => {
+    if (confirm("کیا آپ نے یہ سورہ مکمل پڑھ لیا ہے؟")) {
+      markSurahComplete(surah.id);
+      alert("🎉 مبارک ہو! سورہ مکمل ہو گیا۔");
+    }
+  };
+
+  // Add bookmark function
+  const handleAddBookmark = (verseNumber: number) => {
+    const verse = verses.find((v) => v.verseNumber === verseNumber);
+    if (verse) {
+      const note = prompt("اس آیت کے لیے کوئی نوٹ لکھیں (اختیاری):");
+      readingProgressService.addBookmark(
+        surah.id,
+        verseNumber,
+        surah.transliteration,
+        verse.arabic,
+        note || undefined
       );
-      setPreloadingProgress(((i + 1) / allVerses.length) * 100);
+      alert("📌 بک مارک محفوظ ہو گیا!");
     }
   };
 
@@ -101,10 +163,15 @@ export default function VerseReader({ surah, onBack }: VerseReaderProps) {
             <p className="text-sm text-gray-600 dark:text-gray-400">
               {surah.translation} - {surah.type} • {surah.total_verses} آیات
             </p>
+            {startFromVerse > 1 && (
+              <p className="text-sm text-blue-600 dark:text-blue-400">
+                آیت {startFromVerse} سے شروع کر رہے ہیں
+              </p>
+            )}
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
           {/* Font Size Control */}
           <div className="flex items-center space-x-3 bg-gray-100 dark:bg-gray-700 rounded-lg p-2">
             <label className="text-sm text-gray-600 dark:text-gray-300 font-medium">
@@ -123,42 +190,56 @@ export default function VerseReader({ surah, onBack }: VerseReaderProps) {
             </span>
           </div>
 
-          {/* Preload All Button */}
+          {/* Mark Complete Button */}
           <button
-            onClick={handlePreloadAll}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm"
-            disabled={preloadingProgress > 0 && preloadingProgress < 100}
+            onClick={handleMarkComplete}
+            className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm"
           >
-            {preloadingProgress > 0 && preloadingProgress < 100
-              ? `${Math.round(preloadingProgress)}% لوڈ ہو رہا ہے`
-              : "تمام ترجمے لوڈ کریں"}
+            ✅ مکمل
           </button>
         </div>
       </div>
 
-      {/* Progress Bar for Preloading */}
-      {preloadingProgress > 0 && preloadingProgress < 100 && (
-        <div className="mb-4">
-          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-            <div
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${preloadingProgress}%` }}
-            ></div>
-          </div>
+      {/* Progress Indicator */}
+      <div className="mb-6 bg-gray-100 dark:bg-gray-700 rounded-lg p-3">
+        <div className="flex justify-between items-center text-sm">
+          <span className="text-gray-600 dark:text-gray-400">
+            فی الوقت پڑھ رہے ہیں: آیت {currentVerse}
+          </span>
+          <span className="text-gray-600 dark:text-gray-400">
+            {Math.round((currentVerse / verses.length) * 100)}% مکمل
+          </span>
         </div>
-      )}
+        <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2 mt-2">
+          <div
+            className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+            style={{ width: `${(currentVerse / verses.length) * 100}%` }}
+          ></div>
+        </div>
+      </div>
 
       <div className="space-y-6">
         {verses.map((verse, index) => (
-          <LazyVerse
-            key={index}
-            surahNumber={surah.id}
-            verseNumber={verse.verseNumber}
-            arabicText={verse.arabic}
-            verseIndex={verse.verseNumber}
-            fontSize={fontSize}
-            isVisible={true} // Can be enhanced with intersection observer
-          />
+          <div
+            key={verse.verseNumber}
+            ref={(el) => (verseRefs.current[verse.verseNumber] = el) as any}
+            data-verse={verse.verseNumber}
+            className={`transition-all duration-300 ${
+              currentVerse === verse.verseNumber
+                ? "ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                : ""
+            }`}
+          >
+            <LazyVerse
+              surahNumber={surah.id}
+              verseNumber={verse.verseNumber}
+              arabicText={verse.arabic}
+              verseIndex={verse.verseNumber}
+              fontSize={fontSize}
+              isVisible={true}
+              onBookmark={() => handleAddBookmark(verse.verseNumber)}
+            />
+          </div>
         ))}
       </div>
     </div>
